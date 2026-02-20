@@ -1,6 +1,7 @@
 """Data ingestion script for scraping and storing Promtior website content."""
 
 import os
+import shutil
 import requests
 from pathlib import Path
 from bs4 import BeautifulSoup
@@ -94,9 +95,15 @@ def ingest_data():
     4. Generates embeddings
     5. Stores in ChromaDB
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     print("\n" + "=" * 60)
     print("🚀 Starting data ingestion...")
     print("=" * 60 + "\n")
+
+    logger.info(f"Chroma persist directory: {settings.chroma_persist_directory}")
 
     all_documents = []
 
@@ -106,10 +113,12 @@ def ingest_data():
         all_documents.append(doc)
     except Exception as e:
         print(f"⚠️  Website scraping failed: {e}")
+        logger.warning(f"Website scraping failed: {e}")
 
     # Step 2: Load PDFs
     pdf_docs = load_pdfs()
     all_documents.extend(pdf_docs)
+    logger.info(f"Total documents loaded: {len(all_documents)}")
 
     if not all_documents:
         raise ValueError("No documents to ingest")
@@ -145,6 +154,14 @@ def ingest_data():
     # Step 4: Store in ChromaDB
     print("\n💾 Storing in ChromaDB...")
     print(f"   Directory: {settings.chroma_persist_directory}")
+
+    # Remove existing ChromaDB directory if it exists (avoid readonly errors)
+    import shutil
+
+    chroma_path = Path(settings.chroma_persist_directory)
+    if chroma_path.exists():
+        print(f"   🗑️  Removing existing ChromaDB at {chroma_path}")
+        shutil.rmtree(chroma_path)
 
     Chroma.from_documents(
         documents=chunks,

@@ -14,9 +14,6 @@ RUN uv pip install --system -r pyproject.toml
 # Copy application code
 COPY src/ ./src/
 
-# Copy data directory (with ChromaDB)
-COPY data/ ./data/
-
 # Copy docs directory (for PDF ingestion)
 COPY docs/ ./docs/
 

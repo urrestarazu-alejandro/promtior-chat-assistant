@@ -72,6 +72,10 @@ async def reingest(admin_key: str = Query(...)):
     3. Generate new embeddings
     4. Store in ChromaDB
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     expected_key = os.getenv("ADMIN_REINGEST_KEY")
     if not expected_key or admin_key != expected_key:
         raise HTTPException(status_code=401, detail="Invalid admin key")
@@ -81,14 +85,28 @@ async def reingest(admin_key: str = Query(...)):
         import shutil
 
         chroma_dir = settings.chroma_persist_directory
-        if os.path.exists(chroma_dir):
-            shutil.rmtree(chroma_dir)
-            os.makedirs(chroma_dir)
+        logger.info(f"Re-ingest started. Chroma directory: {chroma_dir}")
+        logger.info(f"Environment: {settings.environment}")
+        logger.info(f"Chroma dir exists before: {os.path.exists(chroma_dir)}")
 
+        if os.path.exists(chroma_dir):
+            logger.info(f"Removing existing ChromaDB directory: {chroma_dir}")
+            shutil.rmtree(chroma_dir)
+            logger.info("Directory removed")
+
+        os.makedirs(chroma_dir, exist_ok=True)
+        logger.info(f"Created directory: {chroma_dir}")
+
+        logger.info("Starting ingest_data()...")
         ingest_data()
+        logger.info("Ingest completed successfully")
 
         return {"status": "success", "message": "Data re-ingested successfully"}
     except Exception as e:
+        import traceback
+
+        logger.error(f"Re-ingest failed: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Re-ingest failed: {str(e)}")
 
 
