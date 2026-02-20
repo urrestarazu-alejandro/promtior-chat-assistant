@@ -1,0 +1,54 @@
+[project]
+name = "promtior-chat-assistant"
+version = "0.1.0"
+description = "RAG-based chatbot for Promtior using LangChain - MVP"
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = [
+    # FastAPI básico
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    # LangChain minimal
+    "langchain>=0.1.0",
+    "langchain-classic>=1.0.0",
+    "langchain-community>=0.0.20",
+    "langchain-openai>=0.0.5",
+    "langchain-chroma>=0.1.0",
+    "langchain-core>=0.1.0",
+    "langchain-text-splitters>=0.0.1",
+    "langchain-ollama>=1.0.1",
+    # Vector DB
+    "chromadb>=0.4.22",
+    # Data models
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.1.0",
+    # Scraping
+    "beautifulsoup4>=4.12.0",
+    "requests>=2.31.0",
+    # Utils
+    "python-dotenv>=1.0.0",
+    "pypdf>=6.7.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-mock>=3.12.0",
+    "httpx>=0.26.0",
+    "ruff>=0.2.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "integration: Integration tests that require Ollama running",
+]
