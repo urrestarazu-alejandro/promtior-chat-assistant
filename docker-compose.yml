@@ -6,10 +6,15 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_MODEL=tinyllama
+      - OLLAMA_CONTEXT_LENGTH=1024
+      - OLLAMA_NUM_PARALLEL=1
     deploy:
       resources:
         limits:
-          memory: 16G  # Increase memory limit for large models like gpt-oss:20b
+          cpus: '2'
+          memory: 4G
     networks:
       - promtior-network
     healthcheck:

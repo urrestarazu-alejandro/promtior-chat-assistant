@@ -17,7 +17,7 @@ description: "Configuración de APIs y variables de entorno"
 | `OPENAI_MODEL` | Modelo de OpenAI | `gpt-4o-mini` |
 | `OPENAI_EMBEDDING_MODEL` | Modelo de embeddings | `text-embedding-3-small` |
 | `USE_OPENAI_EMBEDDINGS` | Usar embeddings de OpenAI | `true` |
-| `CHROMA_PERSIST_DIRECTORY` | Directorio de ChromaDB | `./data/chroma_db_v2` |
+| `CHROMA_PERSIST_DIRECTORY` | Directorio de ChromaDB | `./data/chroma_db` |
 
 ### Development (Ollama)
 

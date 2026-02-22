@@ -1,6 +1,7 @@
 """Configuration settings for the application."""
 
 import os
+import tempfile
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,12 +39,19 @@ class Settings(BaseSettings):
     openai_model: str = Field(default="gpt-4o-mini")
     openai_embedding_model: str = Field(default="text-embedding-3-small")
 
+    @property
+    def use_openai_embeddings(self) -> bool:
+        """Check if OpenAI embeddings should be used."""
+        return os.getenv("USE_OPENAI_EMBEDDINGS", "false").lower() == "true"
+
     # ChromaDB
     @property
     def chroma_persist_directory(self) -> str:
         if self.environment == "production":
-            return "/tmp/chroma_db"
-        return "./data/chroma_db_v2"
+            return os.environ.get(
+                "CHROMA_DB_PATH", os.path.join(tempfile.gettempdir(), "chroma_db")
+            )
+        return "./data/chroma_db"
 
 
 # Global settings instance

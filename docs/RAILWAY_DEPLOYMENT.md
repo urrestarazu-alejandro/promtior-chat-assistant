@@ -146,7 +146,7 @@ flowchart TB
         subgraph Service["promtior-chat-assistant"]
             API[FastAPI<br/>:8000]
             RAG[RAG Chain<br/>LangChain]
-            Chroma[ChromaDB<br/>./data/chroma_db_v2]
+            Chroma[ChromaDB<br/>./data/chroma_db]
         end
     end
     
@@ -243,5 +243,5 @@ railway environment edit --json <<< '{"services":{"SERVICE_ID":{"deploy":{"numRe
 | `OPENAI_MODEL` | No | gpt-4o-mini | Model name |
 | `OPENAI_EMBEDDING_MODEL` | No | text-embedding-3-small | Embeddings model |
 | `USE_OPENAI_EMBEDDINGS` | No | false | Use OpenAI embeddings |
-| `CHROMA_PERSIST_DIRECTORY` | No | ./data/chroma_db_v2 | ChromaDB path |
+| `CHROMA_PERSIST_DIRECTORY` | No | ./data/chroma_db | ChromaDB path |
 | `ADMIN_REINGEST_KEY` | No | - | Admin key for re-ingest |

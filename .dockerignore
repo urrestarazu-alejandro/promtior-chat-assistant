@@ -1,0 +1,86 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing & Coverage
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+*.cover
+.hypothesis/
+.tox/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Documentation (only copy specific docs needed)
+*.md
+!README.md
+docs/*
+!docs/AI-Engineer-Test-Promtior.pdf
+
+# Data & Databases (should be volumes, not in image)
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment files (CRITICAL - never copy secrets!)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Development tools
+Makefile
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Tests (not needed in production image)
+tests/
+pytest.ini
+.pre-commit-config.yaml
+
+# Scripts (copy selectively if needed)
+scripts/
+
+# Lock files (uv uses pyproject.toml)
+uv.lock

@@ -1,20 +1,45 @@
 """Data ingestion script for scraping and storing Promtior website content."""
 
-import os
+import asyncio
+import re
 import shutil
-import requests
 from pathlib import Path
+
+import requests
 from bs4 import BeautifulSoup
-from pypdf import PdfReader
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pypdf import PdfReader
 
 from .config import settings
-from .rag import CustomOllamaEmbeddings
+from .domain.models.embedding_metadata import EmbeddingMetadata
+from .infrastructure.embeddings.ollama_embeddings import CustomOllamaEmbeddings
+from .infrastructure.vector_store.chroma_adapter import ChromaVectorStoreAdapter
 
 PDF_DIR = Path(__file__).parent.parent.parent / "docs"
+
+
+def preprocess_text(text: str) -> str:
+    """Preprocess text to improve embedding quality.
+
+    Following embedding-strategies best practices:
+    - Remove excessive whitespace
+    - Normalize unicode
+    - Preserve paragraph structure
+    - Clean special characters
+    """
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    text = re.sub(r"[ \t]+", " ", text)
+
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    text = re.sub(r"[^\S\n]{2,}", " ", text)
+
+    text = text.strip()
+
+    return text
 
 
 def load_pdfs() -> list[Document]:
@@ -36,6 +61,8 @@ def load_pdfs() -> list[Document]:
             text = ""
             for page in reader.pages:
                 text += page.extract_text() + "\n"
+
+            text = preprocess_text(text)
 
             documents.append(
                 Document(page_content=text, metadata={"source": str(pdf_path.name), "type": "pdf"})
@@ -69,9 +96,7 @@ def scrape_promtior_website() -> Document:
         # Extract text
         text = soup.get_text(separator="\n", strip=True)
 
-        # Clean up multiple newlines
-        lines = (line.strip() for line in text.splitlines())
-        text = "\n".join(line for line in lines if line)
+        text = preprocess_text(text)
 
         print(f"✅ Scraped {len(text)} characters")
 
@@ -89,8 +114,8 @@ def ingest_data():
     Ingest data into ChromaDB.
 
     This function:
-    1. Scrapes the Promtior website
-    2. Loads PDFs from docs directory
+    1. Loads PDFs from docs directory (priority - detailed company info)
+    2. Scrapes the Promtior website (supplementary info)
     3. Splits the text into chunks
     4. Generates embeddings
     5. Stores in ChromaDB
@@ -107,7 +132,12 @@ def ingest_data():
 
     all_documents = []
 
-    # Step 1: Scrape website
+    # Step 1: Load PDFs first (priority - detailed company info like founding date)
+    pdf_docs = load_pdfs()
+    all_documents.extend(pdf_docs)
+    logger.info(f"Total PDFs loaded: {len(pdf_docs)}")
+
+    # Step 2: Scrape website (supplementary info)
     try:
         doc = scrape_promtior_website()
         all_documents.append(doc)
@@ -115,27 +145,36 @@ def ingest_data():
         print(f"⚠️  Website scraping failed: {e}")
         logger.warning(f"Website scraping failed: {e}")
 
-    # Step 2: Load PDFs
-    pdf_docs = load_pdfs()
-    all_documents.extend(pdf_docs)
     logger.info(f"Total documents loaded: {len(all_documents)}")
 
     if not all_documents:
         raise ValueError("No documents to ingest")
 
-    # Step 3: Split text into chunks
-    print("\n✂️  Splitting text into chunks...")
+    # Step 3: Split text into chunks (semantic chunking)
+    print("\n✂️  Splitting text into chunks (semantic)...")
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
+        chunk_size=1500,
+        chunk_overlap=300,
         length_function=len,
+        separators=[
+            "\n\n",
+            "\n",
+            ". ",
+            "? ",
+            "! ",
+            "; ",
+            ", ",
+            " ",
+            "",
+        ],
+        keep_separator=True,
     )
     chunks = text_splitter.split_documents(all_documents)
     print(f"✅ Created {len(chunks)} chunks")
 
-    # Step 3: Initialize embeddings
+    # Step 3: Initialize embeddings and metadata
     print("\n🧮 Initializing embeddings...")
-    if settings.llm_provider == "openai":
+    if settings.llm_provider == "openai" and settings.use_openai_embeddings:
         if not settings.openai_api_key:
             raise ValueError("OPENAI_API_KEY is required when using OpenAI provider")
 
@@ -143,33 +182,51 @@ def ingest_data():
             api_key=settings.openai_api_key,
             model=settings.openai_embedding_model,
         )
+        embedding_metadata = EmbeddingMetadata.from_openai(settings.openai_embedding_model)
         print(f"✅ Using OpenAI embeddings ({settings.openai_embedding_model})")
+        print(f"   Dimension: {embedding_metadata.dimension}")
     else:
         embeddings = CustomOllamaEmbeddings(
             base_url=settings.ollama_base_url,
             model=settings.ollama_embedding_model,
         )
-        print(f"✅ Using CustomOllama embeddings ({settings.ollama_embedding_model})")
+        embedding_metadata = EmbeddingMetadata.from_ollama(settings.ollama_embedding_model)
+        print(f"✅ Using Ollama embeddings ({settings.ollama_embedding_model})")
+        print(f"   Dimension: {embedding_metadata.dimension}")
 
     # Step 4: Store in ChromaDB
     print("\n💾 Storing in ChromaDB...")
     print(f"   Directory: {settings.chroma_persist_directory}")
+    print(f"   Provider: {embedding_metadata.provider.value}")
 
     # Remove existing ChromaDB directory if it exists (avoid readonly errors)
-    import shutil
-
     chroma_path = Path(settings.chroma_persist_directory)
     if chroma_path.exists():
         print(f"   🗑️  Removing existing ChromaDB at {chroma_path}")
         shutil.rmtree(chroma_path)
 
-    Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
+    # Create adapter and add documents
+    adapter = ChromaVectorStoreAdapter(
         persist_directory=settings.chroma_persist_directory,
+        embeddings=embeddings,
+        embedding_metadata=embedding_metadata,
+        validate_metadata=False,
     )
 
+    # Convert to domain Documents and add
+    from .domain.ports.vector_store_port import Document as DomainDocument
+
+    domain_chunks = [
+        DomainDocument(page_content=chunk.page_content, metadata=chunk.metadata) for chunk in chunks
+    ]
+
+    asyncio.run(adapter.add_documents(domain_chunks))
+
+    # Save metadata
+    adapter.save_metadata()
+
     print("✅ ChromaDB populated successfully")
+    print(f"✅ Embedding metadata saved")
 
     # Summary
     print("\n" + "=" * 60)
