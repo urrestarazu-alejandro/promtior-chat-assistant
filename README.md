@@ -15,13 +15,35 @@ Chatbot basado en RAG (Retrieval Augmented Generation) que responde preguntas so
 - Python 3.12+
 - `uv` package manager ([install](https://github.com/astral-sh/uv))
 
-### Local Development (Ollama)
+### 🚀 One-Line Setup (Recommended)
+
+```bash
+# Opción 1: Usar comando quickstart (con mensajes de progreso)
+make quickstart
+
+# Opción 2: Comando combinado directo
+make install && make ollama && make ingest && make dev
+```
+
+Esto ejecutará automáticamente:
+1. ✅ Instala dependencias con `uv`
+2. ✅ Inicia Ollama en Docker y descarga modelos (~1GB)
+3. ✅ Ingiere datos y crea ChromaDB con metadata de embeddings
+4. ✅ Inicia el servidor en http://localhost:8000
+
+⏱️ **Tiempo total**: ~10-15 minutos (primera vez, debido a descarga de modelos)
+
+---
+
+### Local Development (Paso a Paso)
+
+Si prefieres ejecutar los comandos individualmente:
 
 ```bash
 # 1. Install dependencies
 make install
 
-# 2. Copy environment file
+# 2. Copy environment file (opcional)
 cp .env.example .env
 
 # 3. Start Ollama with Docker
@@ -110,11 +132,15 @@ graph TD
 
 | Topic | File |
 |-------|------|
+| **⭐ RAG v2.1 Improvements** | [docs/RAG_V2_IMPROVEMENTS.md](docs/RAG_V2_IMPROVEMENTS.md) |
 | **Local Setup** | [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md) |
+| **Testing Embedding Metadata** | [docs/TESTING_EMBEDDING_METADATA.md](docs/TESTING_EMBEDDING_METADATA.md) |
+| **RAG Troubleshooting** | [docs/RAG_TROUBLESHOOTING.md](docs/RAG_TROUBLESHOOTING.md) |
 | **Railway Deployment** | [docs/RAILWAY_DEPLOYMENT.md](docs/RAILWAY_DEPLOYMENT.md) |
 | **Troubleshooting** | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
 | **API Configuration** | [docs/API_CONFIGURATION.md](docs/API_CONFIGURATION.md) |
 | Architecture + Diagrams | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Cleanup Summary | [docs/CLEANUP_SUMMARY.md](docs/CLEANUP_SUMMARY.md) |
 
 ## Configuration
 
@@ -129,7 +155,7 @@ graph TD
 | `OPENAI_EMBEDDING_MODEL` | Embeddings model | text-embedding-3-small |
 | `OLLAMA_BASE_URL` | Ollama URL | http://localhost:11434 |
 | `OLLAMA_MODEL` | Ollama model | llama2 |
-| `CHROMA_PERSIST_DIRECTORY` | ChromaDB directory | ./data/chroma_db_v2 |
+| `CHROMA_PERSIST_DIRECTORY` | ChromaDB directory | ./data/chroma_db |
 | `ADMIN_REINGEST_KEY` | Key for re-ingest endpoint | - |
 
 ## Data Sources

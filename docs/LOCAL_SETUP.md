@@ -45,9 +45,16 @@ Edit `.env` with your local configuration:
 ENVIRONMENT=development
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=tinyllama
+OLLAMA_MODEL=phi3:mini
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text
-CHROMA_PERSIST_DIRECTORY=./data/chroma_db_v2
+CHROMA_PERSIST_DIRECTORY=./data/chroma_db
+```
+
+> **⚠️ ADVERTENCIA: No usar tinyllama**
+> 
+> El modelo `tinyllama` (~1GB) **alucina frecuentemente** y no sigue instrucciones correctamente. Produce respuestas con placeholders como "[insert date]" o inventa información (ej: dice "2018" cuando el contexto dice "May 2023").
+> 
+> **Solución recomendada:** Usar `phi3:mini` (~3GB) o `openai` (gpt-4o-mini).
 ```
 
 ### 4. Start Ollama
@@ -63,12 +70,12 @@ This will:
 
 **Model options by memory usage:**
 
-| Model | RAM | Quality |
-|-------|-----|---------|
-| tinyllama | ~1GB | Basic |
-| llama2 | ~4GB | Good |
-| phi3:mini | ~3GB | Good |
-| gpt-oss:20b | ~13GB | Best |
+| Model | RAM | Quality | Status |
+|-------|-----|---------|--------|
+| tinyllama | ~1GB | Basic | ❌ No recomendado (alucina) |
+| llama2 | ~4GB | Good | ⚠️ No probado |
+| phi3:mini | ~3GB | Good | ✅ Recomendado |
+| gpt-oss:20b | ~13GB | Best | ⚠️ Requiere 16GB RAM |
 
 To use a different model:
 ```bash
@@ -188,7 +195,7 @@ docker exec promtior-ollama curl http://localhost:11434
 
 ```bash
 # Re-ingest data
-rm -rf data/chroma_db_v2
+rm -rf data/chroma_db
 make ingest
 ```
 

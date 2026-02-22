@@ -1,0 +1,103 @@
+# =============================================================================
+# Multi-Stage Dockerfile for Promtior Chat Assistant
+# Optimized for: Security, Size, Build Performance
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: Base - Common dependencies
+# -----------------------------------------------------------------------------
+FROM python:3.12-slim AS base
+
+# Install uv (fast Python package installer)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_SYSTEM_PYTHON=1
+
+WORKDIR /app
+
+# -----------------------------------------------------------------------------
+# Stage 2: Dependencies - Install Python packages
+# -----------------------------------------------------------------------------
+FROM base AS dependencies
+
+# Copy only dependency files for better layer caching
+COPY pyproject.toml ./
+
+# Install dependencies with cache mount for faster rebuilds
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -r pyproject.toml
+
+# -----------------------------------------------------------------------------
+# Stage 3: Production - Minimal runtime image
+# -----------------------------------------------------------------------------
+FROM base AS production
+
+# Create non-root user with specific UID/GID for security
+RUN groupadd -g 1001 -r appgroup && \
+    useradd -r -u 1001 -g appgroup -m -d /home/appuser appuser
+
+WORKDIR /app
+
+# Copy installed packages from dependencies stage
+COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=dependencies /usr/local/bin /usr/local/bin
+
+# Copy application code with proper ownership
+COPY --chown=appuser:appgroup src/ ./src/
+COPY --chown=appuser:appgroup docs/AI-Engineer-Test-Promtior.pdf ./docs/AI-Engineer-Test-Promtior.pdf
+
+# Create directory for vector database (will be volume-mounted)
+RUN mkdir -p /app/data/chroma_db && \
+    chown -R appuser:appgroup /app/data
+
+# Switch to non-root user
+USER appuser
+
+# Expose application port (configurable via ENV)
+ARG APP_PORT=8000
+ENV PORT=${APP_PORT}
+EXPOSE ${APP_PORT}
+
+# Health check endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health').read()" || exit 1
+
+# Run application with proper signal handling
+CMD ["uvicorn", "src.promtior_assistant.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--proxy-headers", \
+     "--forwarded-allow-ips=*", \
+     "--timeout-keep-alive", "30"]
+
+# -----------------------------------------------------------------------------
+# Stage 4: Development - Hot reload + debugging
+# -----------------------------------------------------------------------------
+FROM base AS development
+
+# Install dev dependencies
+COPY pyproject.toml ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -r pyproject.toml && \
+    uv pip install --system -e ".[dev]"
+
+# Create non-root user (same as production)
+RUN groupadd -g 1001 -r appgroup && \
+    useradd -r -u 1001 -g appgroup -m -d /home/appuser appuser && \
+    chown -R appuser:appgroup /app
+
+WORKDIR /app
+
+USER appuser
+
+EXPOSE 8000 9229
+
+# Development command with hot reload
+CMD ["uvicorn", "src.promtior_assistant.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--reload", \
+     "--log-level", "debug"]

@@ -35,8 +35,6 @@ def test_real_rag_quality():
     response = client.get("/ask?q=¿Qué servicios ofrece Promtior?")
     assert response.status_code == 200
     data = response.json()
-    answer_lower = data["answer"].lower()
 
     # Answer should contain relevant keywords from the actual scraped data
     assert len(data["answer"]) > 20
-    # Note: Actual content depends on what was scraped

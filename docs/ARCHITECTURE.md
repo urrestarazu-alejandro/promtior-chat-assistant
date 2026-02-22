@@ -1,6 +1,6 @@
 ---
 title: "Architecture"
-description: "Arquitectura técnica del sistema con diagramas Mermaid"
+description: "Arquitectura técnica del sistema con diagramas Mermaid - Clean Architecture v2.0"
 ---
 
 # Arquitectura del Sistema
@@ -9,7 +9,11 @@ description: "Arquitectura técnica del sistema con diagramas Mermaid"
 
 Este documento describe la arquitectura técnica del Promtior RAG Chatbot Assistant, un sistema de Retrieval Augmented Generation (RAG) que responde preguntas sobre Promtior utilizando inteligencia artificial.
 
-El sistema existe para proporcionar respuestas contextualizadas a preguntas sobre la empresa, aprovechando el contenido del sitio web y PDFs de Promtior almacenado en una base de datos vectorial.
+El sistema implementa **Clean Architecture (Hexagonal)** con las siguientes capas:
+- **Domain**: Entidades, puertos (interfaces) y servicios de validación
+- **Application**: Casos de uso
+- **Infrastructure**: Implementaciones de adapters, factories, Container DI
+- **Presentation**: API FastAPI, middlewares, schemas
 
 ## 2. Architecture Diagram
 
@@ -19,17 +23,32 @@ flowchart TB
         H["HTTP Client<br/>curl / Browser"]
     end
 
-    subgraph API["FastAPI Application"]
-        R["/ask endpoint<br/>main.py:95-129"]
-        HC["/health endpoint<br/>main.py:53-61"]
-        RI["/admin/reingest endpoint<br/>main.py:64-92"]
+    subgraph Presentation["Presentation Layer"]
+        API["FastAPI App<br/>main.py:67-72"]
+        M1["LoggingMiddleware<br/>middleware/logging.py"]
+        M2["RequestIDMiddleware<br/>middleware/request_id.py"]
+        M3["TimeoutMiddleware<br/>middleware/timeout.py"]
+        V1["/api/v1 routes<br/>routes.py"]
     end
 
-    subgraph RAG["RAG Chain Layer"]
-        PR["Prompt Template<br/>rag.py:267-280"]
-        EM["Embeddings Factory<br/>rag.py:222-248"]
-        LLM["LLM Factory<br/>rag.py:251-264"]
-        VS["Vector Store<br/>ChromaDB"]
+    subgraph Application["Application Layer"]
+        UC["AnswerQuestionUseCase<br/>use_cases/answer_question.py"]
+    end
+
+    subgraph Domain["Domain Layer"]
+        VP["VectorStorePort<br/>ports/vector_store_port.py"]
+        LP["LLMPort<br/>ports/llm_port.py"]
+        EP["EmbeddingsPort<br/>ports/embeddings_port.py"]
+        Val["Validators<br/>services/validators.py"]
+    end
+
+    subgraph Infrastructure["Infrastructure Layer"]
+        Cont["Container<br/>container.py"]
+        F["Factories<br/>factories.py"]
+        Ollama["OllamaAsyncAdapter<br/>llm/ollama_async_adapter.py"]
+        OpenAI["OpenAIAsyncAdapter<br/>llm/openai_async_adapter.py"]
+        Chroma["ChromaAdapter<br/>vector_store/chroma_adapter.py"]
+        UT["UsageTracker<br/>persistence/usage_tracker.py"]
     end
 
     subgraph Storage["Data Layer"]
@@ -37,34 +56,30 @@ flowchart TB
     end
 
     subgraph LLM_Providers["LLM Providers"]
-        OLL["Ollama<br/>gpt-oss:20b / nomic-embed-text"]
+        OLL["Ollama<br/>tinyllama / nomic-embed-text"]
         OAI["OpenAI<br/>gpt-4o-mini / text-embedding-3-small"]
     end
 
-    subgraph DataSources["Data Sources"]
-        WS["promtior.ai<br/>BeautifulSoup"]
-        PDF["docs/*.pdf<br/>pypdf"]
-    end
-
-    H --> R
-    H --> HC
-    R --> PR
-    PR --> EM
-    PR --> LLM
-    EM <--> VS
-    LLM <--> VS
-    VS --> CV
-    EM <--> OLL
-    EM <--> OAI
-    LLM <--> OLL
-    LLM <--> OAI
-    WS -->|ingest| PDF
-    PDF --> VS
+    H --> API
+    API --> M1 --> M2 --> M3 --> V1
+    V1 --> UC
+    UC --> Val
+    UC --> VP
+    UC --> LP
+    VP <--> Chroma
+    Chroma <--> CV
+    Cont --> F
+    F --> Ollama
+    F --> OpenAI
+    LP <--> Ollama
+    LP <--> OpenAI
 
     classDef dark fill:#2d333b,stroke:#6d5dfc,color:#e6edf3
-    classDef storage fill:#161b22,stroke:#30363d,color:#e6edf3
-    class Client,API,RAG dark
-    class Storage,CV storage
+    classDef domain fill:#1a4731,stroke:#22c55e,color:#e6edf3
+    classDef infra fill:#2d333b,stroke:#f59e0b,color:#e6edf3
+    class Client,Presentation,Application dark
+    class Domain domain
+    class Infrastructure,Storage,CV infra
 ```
 
 ## 3. Request Flow
@@ -74,28 +89,30 @@ sequenceDiagram
     autonumber
     participant U as User
     participant F as FastAPI
-    participant RC as RAG Chain
-    participant VS as ChromaDB
-    participant L as LLM
+    participant M as Middleware Stack
+    participant UC as AnswerQuestionUseCase
+    participant V as VectorStorePort
+    participant L as LLMPort
+    participant C as Container
 
     U->>F: GET /ask?q=question
-    Note over F: Validates query<br/>InputValidator.validate()
+    F->>M: Request flows through middleware
+    Note over M: Logging, RequestID, Timeout
+    
+    M->>UC: execute(question)
+    Note over UC: InputValidator.validate()
 
-    F->>RC: get_rag_answer(question)
-    Note over RC: RAG chain execution<br/>rag.py:324-370
+    UC->>V: retrieve_documents(query, k=3)
+    V-->>UC: Top-3 relevant chunks
 
-    RC->>VS: as_retriever().invoke(question)
-    Note over VS: Vector similarity search (k=3)
+    UC->>L: generate(prompt)
+    Note over L: Ollama or OpenAI
 
-    VS-->>RC: Top-3 relevant chunks
+    L-->>UC: Answer text
+    Note over UC: OutputValidator.validate()
 
-    RC->>L: prompt + context
-    Note over L: Generates response
-
-    L-->>RC: Answer text
-    Note over RC: OutputValidator.validate()
-
-    RC-->>F: answer string
+    UC-->>M: answer string
+    M-->>F: Response
 
     F-->>U: {"question","answer","status"}
 ```
@@ -106,120 +123,169 @@ sequenceDiagram
 
 | Componente | Línea | Propósito |
 |------------|-------|-----------|
-| `app = FastAPI()` | 17-21 | Inicialización de aplicación FastAPI |
-| CORS middleware | 23-30 | Permitir solicitudes cross-origin |
-| `/` endpoint | 33-50 | Información de la API |
-| `/health` endpoint | 53-61 | Health check |
-| `/ask` endpoint | 95-129 | Procesamiento de preguntas |
-| `/admin/reingest` endpoint | 64-92 | Re-ingestión de datos |
+| `app = FastAPI()` | 67-72 | Inicialización de aplicación FastAPI con lifespan |
+| LoggingMiddleware | 132 | Request/response logging |
+| RequestIDMiddleware | 133 | Request ID propagation |
+| TimeoutMiddleware | 134 | Request timeout (60s default) |
+| Exception handlers | 76-128 | Custom error handling |
+| `/` endpoint | 149-161 | API info |
+| `/health` endpoint | 164-167 | Basic health check |
+| `/health/live` endpoint | 170-173 | Kubernetes liveness probe |
+| `/health/ready` endpoint | 176-189 | Kubernetes readiness probe |
+| `/ask` endpoint | 229-251 | Legacy endpoint |
+| `/admin/reingest` endpoint | 192-226 | Data re-ingestion |
+| `/api/v1/ask` endpoint | routes.py:11-36 | v1 API endpoint |
 
 ### 4.2 Configuration (`config.py`)
 
 | Variable | Línea | Descripción |
 |----------|-------|-------------|
-| `Settings` class | 7-44 | Configuración centralizada con Pydantic |
-| Environment switching | 23-26 | Dual support (Ollama/OpenAI) |
-| ChromaDB path | 40 | Directorio de persistencia |
+| `Settings` class | 7-25 | Configuración centralizada con Pydantic |
+| Environment switching | 15-18 | Dual support (Ollama/OpenAI) |
+| ChromaDB path | 19-22 | Directorio de persistencia |
 
-### 4.3 RAG Chain (`rag.py`)
+### 4.3 Domain Layer
 
-| Función | Líneas | Propósito |
-|---------|--------|-----------|
-| `InputValidator.validate()` | 74-86 | Validación de entrada |
-| `OutputValidator.validate()` | 93-100 | Validación de salida |
-| `CustomOllamaEmbeddings` | 103-164 | Embeddings con auth para Ollama |
-| `CustomOllamaChat` | 167-219 | Chat con auth para Ollama |
-| `_get_embeddings()` | 222-248 | Factory de embeddings (switch Ollama/OpenAI) |
-| `_get_llm()` | 251-264 | Factory de LLM (switch Ollama/OpenAI) |
-| `_get_vector_store()` | 283-290 | Cacheo de ChromaDB con LRU |
-| `_get_qa_chain()` | 293-306 | Construcción del chain RetrievalQA |
-| `get_rag_answer()` | 324-370 | Ejecución asíncrona del RAG con retry |
+| Componente | Archivo | Propósito |
+|------------|---------|-----------|
+| `LLMPort` | `domain/ports/llm_port.py` | Interface para providers LLM |
+| `VectorStorePort` | `domain/ports/vector_store_port.py` | Interface para vector store |
+| `EmbeddingsPort` | `domain/ports/embeddings_port.py` | Interface para embeddings |
+| `InputValidator` | `domain/services/validators.py:18-48` | Validación de entrada |
+| `OutputValidator` | `domain/services/validators.py:51-73` | Validación de salida |
 
-### 4.4 Data Ingestion (`ingest.py`)
+### 4.4 Application Layer
 
-| Función | Líneas | Propósito |
-|---------|--------|-----------|
-| `load_pdfs()` | 19-46 | Carga de PDFs con pypdf |
-| `scrape_promtior_website()` | 49-83 | Web scraping con BeautifulSoup |
-| `ingest_data()` | 86-164 | Pipeline completo de ingestión |
+| Componente | Archivo | Propósito |
+|------------|---------|-----------|
+| `AnswerQuestionUseCase` | `application/use_cases/answer_question.py` | Caso de uso principal con retry logic |
 
-## 5. Environment Switching
+### 4.5 Infrastructure Layer
 
-El sistema implementa un patrón factory para seleccionar el proveedor de LLM:
+| Componente | Archivo | Propósito |
+|------------|---------|-----------|
+| `Container` | `infrastructure/container.py` | Dependency Injection con singleton pattern |
+| `create_llm()` | `infrastructure/factories.py:9-38` | Factory para LLM |
+| `create_embeddings()` | `infrastructure/factories.py:41-65` | Factory para embeddings |
+| `OllamaAsyncAdapter` | `infrastructure/llm/ollama_async_adapter.py` | Adapter async para Ollama |
+| `OpenAIAsyncAdapter` | `infrastructure/llm/openai_async_adapter.py` | Adapter async para OpenAI |
+| `ChromaAdapter` | `infrastructure/vector_store/chroma_adapter.py` | Adapter para ChromaDB |
+| `UsageTracker` | `infrastructure/persistence/usage_tracker.py` | Tracking de uso y costos |
+
+### 4.6 Presentation Layer
+
+| Componente | Archivo | Propósito |
+|------------|---------|-----------|
+| Middleware stack | `presentation/middleware/` | Logging, RequestID, Timeout |
+| Request schemas | `presentation/schemas/request.py` | Pydantic request models |
+| Response schemas | `presentation/schemas/response.py` | Pydantic response models |
+| Exception handlers | `presentation/exceptions.py` | Custom exceptions |
+
+## 5. Dependency Injection Container
+
+El sistema implementa un Container pattern para gestión de dependencias:
 
 ```python
-# rag.py:251-264
-def _get_llm() -> BaseChatModel:
-    if settings.llm_provider == "openai":
-        return ChatOpenAI(model=settings.openai_model, temperature=0.7)
-    return CustomOllamaChat(model=settings.ollama_model, temperature=0.7, base_url=settings.ollama_base_url)
+# infrastructure/container.py:33-46
+class Container:
+    @classmethod
+    async def initialize(cls):
+        cls._llm = create_llm()
+        cls._embeddings = create_embeddings()
+        cls._vector_store = ChromaVectorStoreAdapter(
+            persist_directory=settings.chroma_persist_directory,
+            embeddings=cls._embeddings,
+        )
 ```
 
-| Entorno | LLM | Embeddings | Costo |
-|---------|-----|------------|-------|
-| Development | Ollama (llama2) | nomic-embed-text | $0 |
-| Production | OpenAI (gpt-4o-mini) | text-embedding-3-small | ~$2-10/mes |
+| Método | Propósito |
+|--------|-----------|
+| `get_llm()` | Retorna singleton de LLM |
+| `get_embeddings()` | Retorna singleton de embeddings |
+| `get_vector_store()` | Retorna instancia de ChromaAdapter |
+| `initialize()` | Inicializa todos los singletons |
+| `cleanup()` | Limpia recursos |
 
-## 6. Data Flow
+## 6. Environment Configuration
 
-### 6.1 Ingestion Flow
+| Variable | Dev Default | Production | Descripción |
+|----------|-------------|------------|-------------|
+| `ENVIRONMENT` | `development` | `production` | Environment mode |
+| `LLM_PROVIDER` | `ollama` | `openai` | LLM provider |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | — | Ollama server URL |
+| `OLLAMA_MODEL` | `tinyllama` | — | Ollama model name |
+| `OPENAI_API_KEY` | — | **Required** | OpenAI API key |
+| `OPENAI_MODEL` | `gpt-4o-mini` | `gpt-4o-mini` | OpenAI model name |
+
+## 7. Data Flow
+
+### 7.1 Ingestion Flow
 
 ```mermaid
 flowchart LR
-    A["Website<br/>promtior.ai"] --> B["scrape_promtior_website()<br/>ingest.py:49-83"]
-    A1["docs/*.pdf"] --> C["load_pdfs()<br/>ingest.py:19-46"]
+    A["Website<br/>promtior.ai"] --> B["scrape_promtior_website()<br/>ingest.py"]
+    A1["docs/*.pdf"] --> C["load_pdfs()<br/>ingest.py"]
     B --> D["RecursiveCharacterTextSplitter<br/>chunk_size=1000<br/>chunk_overlap=200"]
     C --> D
-    D --> E["Embeddings<br/>OpenAI/Ollama"]
+    D --> E["Embeddings<br/>Ollama/OpenAI"]
     E --> F["ChromaDB<br/>persist_directory"]
 ```
 
-### 6.2 Query Flow
+### 7.2 Query Flow
 
 ```mermaid
 flowchart TD
-    Q["User Question"] --> V["Embed Question<br/>text-embedding-3-small / nomic-embed-text"]
+    Q["User Question"] --> V["Embed Question<br/>nomic-embed-text / text-embedding-3-small"]
     V --> S["Similarity Search<br/>k=3 chunks"]
     S --> C["Retrieve Context"]
-    C --> P["Prompt + Context<br/>rag.py:267-280"]
-    P --> L["Generate Answer<br/>gpt-4o-mini / gpt-oss:20b"]
+    C --> P["Prompt + Context<br/>use_cases/answer_question.py:44-65"]
+    P --> L["Generate Answer<br/>OllamaAsyncAdapter / OpenAIAsyncAdapter"]
     L --> A["Answer Response"]
 ```
-
-## 7. Source Code References
-
-| Archivo | Componente | Líneas |
-|---------|------------|--------|
-| `main.py` | FastAPI app, endpoints | 1-136 |
-| `config.py` | Settings, environment vars | 1-45 |
-| `rag.py` | RAG chain, factories | 1-371 |
-| `ingest.py` | Web scraping, PDF loading, ingestion | 1-169 |
-| `Dockerfile` | Container definition | - |
-| `pyproject.toml` | Dependencies | - |
 
 ## 8. Technology Stack
 
 | Categoria | Tecnologia | Version |
 |-----------|------------|---------|
-| Web Framework | FastAPI | 0.110+ |
-| RAG Framework | LangChain | 1.0+ |
+| Web Framework | FastAPI | 0.100+ |
+| Architecture | Clean/Hexagonal | — |
+| RAG Framework | LangChain Core | — |
 | Vector Database | ChromaDB | 0.4+ |
-| Development LLM | Ollama + gpt-oss:20b | Latest |
-| Production LLM | OpenAI gpt-4o-mini | Latest |
+| Development LLM | Ollama (tinyllama) | Latest |
+| Production LLM | OpenAI (gpt-4o-mini) | Latest |
 | Embeddings | nomic-embed-text / text-embedding-3-small | Latest |
 | PDF Processing | pypdf | 6.7+ |
 | Deployment | Railway | Latest |
+| Package Manager | uv | Latest |
+| Linter | ruff | Latest |
+| Testing | pytest | 9.0+ |
 
-## 9. Prompt Template
+## 9. Testing Coverage
 
-El sistema utiliza un prompt en español:
+El proyecto mantiene **96%+ coverage** en código no-legacy:
 
 ```
-Eres un asistente que responde preguntas sobre Promtior, una empresa de consultoría 
-tecnológica y organizacional especializada en inteligencia artificial.
+TOTAL                                                                    394      9     40      3  96.58%
+```
 
-Usa el siguiente contexto para responder la pregunta. Si no sabes la respuesta 
-basándote en el contexto, di que no tienes esa información.
+| Capa | Coverage |
+|------|----------|
+| Domain | 95%+ |
+| Application | 100% |
+| Infrastructure | 90%+ |
+| Presentation | 80%+ |
+
+## 10. Prompt Template
+
+El sistema utiliza un prompt en español definido en `use_cases/answer_question.py:54-65`:
+
+```
+Eres un asistente que responde preguntas sobre Promtior,
+una empresa de consultoría tecnológica y organizacional especializada
+en inteligencia artificial.
+
+Usa el siguiente contexto para responder la pregunta. Si no sabes la
+respuesta basándote en el contexto, di que no tienes esa información.
 
 Contexto: {context}
 
@@ -228,17 +294,52 @@ Pregunta: {question}
 Respuesta:
 ```
 
-## 10. Retry Logic
+## 11. Retry Logic
 
-El sistema implementa retry exponencial con 3 intentos:
+El sistema implementa retry exponencial con 3 intentos en `use_cases/answer_question.py:82-114`:
 
 ```python
-# rag.py:346-370
 max_retries = 3
 for attempt in range(max_retries):
     try:
         # RAG execution
     except Exception as e:
         wait_time = 2 ** attempt  # 1s, 2s, 4s
-        time.sleep(wait_time)
+        await asyncio.sleep(wait_time)
 ```
+
+## 12. Legacy vs Clean Code
+
+### Code to Replace (Legacy)
+
+| Archivo | Estado | Notas |
+|---------|--------|-------|
+| `rag.py` | Legacy | Factory functions con lru_cache |
+| `rag_service.py` | Legacy | Singleton con lru_cache |
+| `ingest.py` | Legacy | Script de ingestión |
+
+### Clean Architecture (Active)
+
+| Capa | Directorio | Estado |
+|------|------------|--------|
+| Domain | `domain/` | ✅ Active |
+| Application | `application/` | ✅ Active |
+| Infrastructure | `infrastructure/` | ✅ Active |
+| Presentation | `presentation/` | ✅ Active |
+
+## 13. Source Code References
+
+| Archivo | Capa | Propósito |
+|---------|------|-----------|
+| `main.py` | Presentation | FastAPI app, endpoints, middleware |
+| `config.py` | Infrastructure | Settings, environment vars |
+| `container.py` | Infrastructure | Dependency injection |
+| `factories.py` | Infrastructure | LLM/Embeddings factories |
+| `answer_question.py` | Application | Use case principal |
+| `validators.py` | Domain | Input/Output validation |
+| `llm_port.py` | Domain | LLM interface |
+| `vector_store_port.py` | Domain | Vector store interface |
+| `ollama_async_adapter.py` | Infrastructure | Ollama LLM adapter |
+| `openai_async_adapter.py` | Infrastructure | OpenAI LLM adapter |
+| `chroma_adapter.py` | Infrastructure | ChromaDB adapter |
+| `ingest.py` | Infrastructure | Data ingestion (legacy) |
