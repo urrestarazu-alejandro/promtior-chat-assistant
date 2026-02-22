@@ -27,6 +27,8 @@ description: "Guía para desplegar en Railway"
 
 In Railway dashboard, go to **Variables** tab and add:
 
+For complete environment variables reference, see [CLAUDE.md](../CLAUDE.md#environment-variables).
+
 | Variable | Value | Description |
 |----------|-------|-------------|
 | `ENVIRONMENT` | `production` | Set production mode |
@@ -230,18 +232,5 @@ To add custom domain:
 To increase replicas:
 
 ```bash
-railway environment edit --json <<< '{"services":{"SERVICE_ID":{"deploy":{"numReplicas":2}}}}'
+ railway environment edit --json <<< '{"services":{"SERVICE_ID":{"deploy":{"numReplicas":2}}}}'
 ```
-
-## Environment Variables Reference
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ENVIRONMENT` | Yes | development | production/development |
-| `LLM_PROVIDER` | Yes | auto | openai/ollama |
-| `OPENAI_API_KEY` | Yes* | - | OpenAI key (*required in production) |
-| `OPENAI_MODEL` | No | gpt-4o-mini | Model name |
-| `OPENAI_EMBEDDING_MODEL` | No | text-embedding-3-small | Embeddings model |
-| `USE_OPENAI_EMBEDDINGS` | No | false | Use OpenAI embeddings |
-| `CHROMA_PERSIST_DIRECTORY` | No | ./data/chroma_db | ChromaDB path |
-| `ADMIN_REINGEST_KEY` | No | - | Admin key for re-ingest |

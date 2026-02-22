@@ -28,6 +28,8 @@ dependencies = [
     # Utils
     "python-dotenv>=1.0.0",
     "pypdf>=6.7.1",
+    # Security - Rate Limiting
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]

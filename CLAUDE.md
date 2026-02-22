@@ -116,20 +116,11 @@ make test             # uv run pytest -v -m "not integration"
 # Run all tests (requires Ollama running)
 make test-all         # uv run pytest -v
 
-# Run integration tests only
-make test-integration # uv run pytest -v -m integration
-
-# Lint & format
-uv run ruff check src/ tests/         # Check code quality
-uv run ruff check src/ tests/ --fix   # Auto-fix issues
-uv run ruff format src/ tests/        # Format code
-
-# Type checking (when configured)
-uv run mypy src/promtior_assistant
-
 # Clean caches
 make clean
 ```
+
+For lint/format: See Quick Reference below.
 
 ## Architecture Patterns (Current - v2.0)
 
@@ -146,17 +137,6 @@ make clean
 
 ### Planned Patterns (Future)
 - Phase 3: Full Clean Architecture if project grows beyond thresholds
-
-### Planned Patterns (v2.0 - See docs/ARCHITECTURE_REFACTORING_PLAN.md)
-- ✨ **Container Singleton Pattern** for dependency injection (replaces @lru_cache)
-- ✨ **FastAPI Lifespan Events** for proper startup/shutdown
-- ✨ **Ports & Adapters** (Hexagonal Architecture) for framework independence
-- ✨ **Clean Architecture** layers: Domain → Application → Infrastructure → Presentation
-- ✨ **Async/Await best practices** (httpx.AsyncClient, asyncio.sleep)
-- ✨ **Pydantic V2 Schemas** for request/response validation
-- ✨ **Custom Exception Handlers** for granular error handling
-- ✨ **Middleware Stack** (RequestID, Logging, Timeout)
-- ✨ **Production Health Checks** (/health, /health/live, /health/ready)
 
 ## Architecture Roadmap
 
@@ -198,8 +178,6 @@ make clean
 See `docs/ARCHITECTURE_REFACTORING_PLAN.md` for full details.
 
 ## Python 3.12+ Enhancements (Planned)
-
-See `docs/PYTHON_PRO_RECOMMENDATIONS.md` for comprehensive guide.
 
 ### Critical (Week 1 - 4-5h)
 - [ ] Configure mypy strict mode for type safety
@@ -339,57 +317,18 @@ See `docs/RAG_V2_IMPROVEMENTS.md` for full technical deep-dive.
 - `src/promtior_assistant/rag.py` — Legacy RAG chain
 - `src/promtior_assistant/ingest.py` — Data pipeline (scraping + PDF)
 
-### RAG v2.1 Documentation (⭐ New!)
-- 📘 `docs/RAG_V2_IMPROVEMENTS.md` — **Technical deep-dive** of v2.1 improvements with diagrams
-- 📘 `docs/RAG_TROUBLESHOOTING.md` — RAG debugging guide and common issues
-- 📘 `docs/TESTING_EMBEDDING_METADATA.md` — Step-by-step testing guide for metadata system
-- 📘 `docs/CLEANUP_SUMMARY.md` — Directory structure cleanup (chroma_db_v2 → chroma_db)
-- 🔧 `scripts/diagnose_rag.py` — RAG diagnostic tool for debugging retrieval
+### RAG v2.1 Documentation
+- 📘 `docs/RAG_V2_IMPROVEMENTS.md` — Technical deep-dive of v2.1 improvements
+- 📘 `docs/TROUBLESHOOTING.md` — RAG debugging guide and common issues
 
 ### Architecture & Planning
-- 📘 `docs/ARCHITECTURE_REFACTORING_PLAN.md` — **Master refactoring plan** (v2.0 with FastAPI Pro)
-- 📘 `docs/PHASE2_FASTAPI_PRO_ADDITIONS.md` — FastAPI-specific tasks and patterns
-- 📘 `docs/PYTHON_PRO_RECOMMENDATIONS.md` — Python 3.12+ best practices and tooling
-- 📘 `docs/ARCHITECTURE.md` — Current architecture documentation
-- 📘 `docs/TROUBLESHOOTING.md` — Common issues and solutions
+- 📘 `docs/ARCHITECTURE.md` — Architecture documentation
+- 📘 `docs/RAILWAY_DEPLOYMENT.md` — Railway deployment guide
+- 📘 `docs/LOCAL_SETUP.md` — Local development setup
 
-### Deployment
-- 🚀 `docs/RAILWAY_DEPLOYMENT.md` — Railway deployment guide
-- 🚀 `docs/API_CONFIGURATION.md` — API endpoint documentation
-- 🚀 `docs/LOCAL_SETUP.md` — Local development setup
+## Common Issues
 
-## Common Pitfalls & Known Issues
-
-### Current (v2.1)
-1. **ChromaDB requires data**: `data/chroma_db/` must exist with ingested data before `/ask` works
-2. **Integration tests need Ollama**: Run `docker-compose up -d` or `make ollama` first
-3. **Admin key required**: `ADMIN_REINGEST_KEY` environment variable must match for `/admin/reingest`
-4. **Embedding metadata validation**: After switching providers (Ollama ↔ OpenAI), re-ingest required
-   - **Error**: `EmbeddingMismatchError` if metadata doesn't match
-   - **Fix**: `rm -rf data/chroma_db && make ingest`
-
-### Fixed in v2.1 ✅
-- ✅ **Silent embedding mismatches**: Now caught at startup with clear error messages
-- ✅ **Language inconsistency**: Multi-language prompts auto-detect question language
-- ✅ **Poor retrieval for specific questions**: Increased k=5, chunk_size=1500
-- ✅ **No debugging tools**: Added `scripts/diagnose_rag.py`
-- ✅ **Confusing directory names**: Simplified `chroma_db_v2` → `chroma_db`
-
-### Legacy Code Issues (to be addressed in future phases)
-- Legacy code in `rag.py` and `rag_service.py` uses `@lru_cache` (to be replaced with Container pattern)
-
-### Future Improvements (Python Pro / Phase 3)
-1. 🟡 **No Type Safety**: Missing mypy configuration and incomplete type hints
-   - **Impact**: Runtime errors that could be caught at type-check time
-   - **Fix**: mypy strict mode + complete type hints (Python Pro Phase 1)
-
-2. 🟡 **Security Gaps**: No input sanitization for injection attacks, no security scanning
-   - **Impact**: Vulnerable to XSS, code injection
-   - **Fix**: Enhanced validation + bandit scanning (Python Pro Phase 1)
-
-3. ✅ **Observability** (Partially Implemented): Request tracking, structured logging, health checks exist
-   - **Status**: Middleware stack implemented in v2.0
-   - **Remaining**: Production metrics, tracing
+See `docs/TROUBLESHOOTING.md` for detailed solutions to common problems.
 
 ## Available Claude Skills
 
@@ -506,27 +445,16 @@ When implementing refactoring phases:
 - **Connection pooling**: ✅ Enabled
 - **Observability**: ✅ Production-ready (middleware, health checks)
 
-## Testing Strategy
+## Testing
 
-### Current Coverage
-- **Unit tests**: 110 tests (API, adapters, validators, containers, factories)
-- **Integration tests**: 2 tests (require Ollama)
-- **Coverage**: 96.58% (exceeds 90% target)
+- **Unit tests**: Run with `make test` (no Ollama required)
+- **All tests**: Run with `make test-all` (requires Ollama)
+- **Coverage**: 96%+ (see `docs/ARCHITECTURE.md`)
 
-### Testing Areas Covered
-- API endpoints (/, /health, /health/live, /health/ready, /ask, /admin/reingest, /api/v1/ask)
-- LLM Adapters (Ollama, OpenAI)
-- Vector Store Adapter (ChromaDB)
-- Dependency Injection Container
-- Factories (LLM, Embeddings)
-- Domain Validators
-- Use Cases (AnswerQuestion)
-- Exception handlers
-- Middleware (logging, request_id, timeout)
+See `tests/` for test suite structure and `docs/TROUBLESHOOTING.md` for common issues.
 
 ## Additional Resources
 
-- **Original Requirements**: `docs/AI-Engineer-Test-Promtior.pdf`
 - **Railway Dashboard**: https://railway.app (check deployment logs)
 - **LangChain Docs**: https://python.langchain.com/docs/
 - **FastAPI Docs**: https://fastapi.tiangolo.com/
@@ -548,8 +476,6 @@ uv run ruff format src/        # Format code
 
 ### Important Files
 - `CLAUDE.md` — **This file** (project overview)
-- `docs/ARCHITECTURE_REFACTORING_PLAN.md` — Master refactoring plan
-- `docs/PYTHON_PRO_RECOMMENDATIONS.md` — Python best practices
 - `.env.example` — Environment variables template
 - `pyproject.toml` — Project configuration
 - `Makefile` — Common commands

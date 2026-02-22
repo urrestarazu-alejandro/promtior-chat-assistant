@@ -115,30 +115,30 @@ def test_ask_founding_question():
 
 
 def test_reingest_invalid_key():
-    """Test reingest endpoint with invalid admin key."""
-    with patch("src.promtior_assistant.main.os.getenv") as mock_getenv:
+    """Test reingest endpoint with invalid admin key via Authorization header."""
+    with patch("src.promtior_assistant.presentation.api.dependencies.auth.os.getenv") as mock_getenv:
         mock_getenv.return_value = "correct_key"
 
-        response = client.post("/admin/reingest?admin_key=wrong_key")
+        response = client.post("/admin/reingest", headers={"Authorization": "Bearer wrong_key"})
         assert response.status_code == 401
 
 
 def test_reingest_missing_key():
-    """Test reingest endpoint without admin key."""
-    with patch("src.promtior_assistant.main.os.getenv") as mock_getenv:
+    """Test reingest endpoint without Authorization header."""
+    with patch("src.promtior_assistant.presentation.api.dependencies.auth.os.getenv") as mock_getenv:
         mock_getenv.return_value = "correct_key"
 
         response = client.post("/admin/reingest")
-        assert response.status_code == 422  # FastAPI Query param is required
+        assert response.status_code == 401
 
 
 def test_reingest_invalid_key_env():
     """Test reingest endpoint when no env key is set."""
-    with patch("src.promtior_assistant.main.os.getenv") as mock_getenv:
+    with patch("src.promtior_assistant.presentation.api.dependencies.auth.os.getenv") as mock_getenv:
         mock_getenv.return_value = None
 
-        response = client.post("/admin/reingest?admin_key=any")
-        assert response.status_code == 401
+        response = client.post("/admin/reingest", headers={"Authorization": "Bearer any"})
+        assert response.status_code == 503
 
 
 def test_api_v1_ask():

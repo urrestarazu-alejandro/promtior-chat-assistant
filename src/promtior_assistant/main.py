@@ -4,11 +4,14 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from typing import Annotated
 
 from .config import settings
 from .infrastructure.container import Container
+from .presentation.api.dependencies.auth import verify_admin_key
 from .presentation.api.v1 import routes as v1_routes
 from .presentation.exceptions import (
     AuthenticationError,
@@ -18,7 +21,9 @@ from .presentation.exceptions import (
     ValidationError,
 )
 from .presentation.middleware.logging import LoggingMiddleware
+from .presentation.middleware.rate_limit import get_limiter, rate_limit_handler
 from .presentation.middleware.request_id import RequestIDMiddleware
+from .presentation.middleware.security_headers import SecurityHeadersMiddleware
 from .presentation.middleware.timeout import TimeoutMiddleware
 
 logger = logging.getLogger(__name__)
@@ -71,6 +76,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Rate limiting setup
+limiter = get_limiter()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 # Exception handlers
 @app.exception_handler(PromtiorError)
@@ -129,17 +138,20 @@ async def authentication_error_handler(request, exc: AuthenticationError):
 
 
 # Middleware stack (order matters - added in reverse)
+# Security headers applied first to all responses
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(TimeoutMiddleware, timeout=300.0)
 
-# CORS middleware
+# CORS middleware - Security: Environment-based allowed origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_allowed_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+    max_age=600,
 )
 
 # API v1 routes
@@ -190,14 +202,23 @@ async def readiness():
 
 
 @app.post("/admin/reingest")
-async def reingest(admin_key: str = Query(...)):
-    """Re-ingest data into ChromaDB. Requires admin key.
+@limiter.limit("3/hour")
+async def reingest(
+    request: Request,
+    admin_key: Annotated[str, Depends(verify_admin_key)],
+):
+    """Re-ingest data into ChromaDB. Requires admin key via Authorization header.
+
+    Authentication: Authorization: Bearer <admin_key>
 
     Note: This endpoint has an extended timeout of 5 minutes for data processing.
+    Rate limited to 3 requests per hour to prevent abuse.
+
+    Security improvements:
+    - Admin key sent via Authorization header (not query param)
+    - Not visible in logs/browser history
+    - Rate limited to prevent brute force attacks
     """
-    expected_key = os.getenv("ADMIN_REINGEST_KEY")
-    if not expected_key or admin_key != expected_key:
-        raise HTTPException(status_code=401, detail="Invalid admin key")
 
     try:
         import asyncio
@@ -241,7 +262,9 @@ async def reingest(admin_key: str = Query(...)):
 
 
 @app.get("/ask")
+@limiter.limit("30/minute")
 async def ask_question(
+    request: Request,
     q: str = Query(
         ...,
         min_length=1,
@@ -250,7 +273,10 @@ async def ask_question(
         examples=["¿Qué servicios ofrece Promtior?"],
     ),
 ):
-    """Ask a question about Promtior."""
+    """Ask a question about Promtior.
+
+    Rate limited to 30 requests per minute to prevent abuse.
+    """
     try:
         answer = await get_rag_answer()(q)
         return {

@@ -5,31 +5,7 @@ description: "Configuración de APIs y variables de entorno"
 
 # API Configuration
 
-## Environment Variables
-
-### Production (OpenAI)
-
-| Variable | Descripción | Ejemplo |
-|----------|-------------|---------|
-| `ENVIRONMENT` | Entorno | `production` |
-| `LLM_PROVIDER` | Proveedor de LLM | `openai` |
-| `OPENAI_API_KEY` | Clave de API de OpenAI | `sk-...` |
-| `OPENAI_MODEL` | Modelo de OpenAI | `gpt-4o-mini` |
-| `OPENAI_EMBEDDING_MODEL` | Modelo de embeddings | `text-embedding-3-small` |
-| `USE_OPENAI_EMBEDDINGS` | Usar embeddings de OpenAI | `true` |
-| `CHROMA_PERSIST_DIRECTORY` | Directorio de ChromaDB | `./data/chroma_db` |
-
-### Development (Ollama)
-
-| Variable | Descripción | Ejemplo |
-|----------|-------------|---------|
-| `ENVIRONMENT` | Entorno | `development` |
-| `LLM_PROVIDER` | Proveedor de LLM | `ollama` |
-| `OLLAMA_BASE_URL` | URL de Ollama | `http://localhost:11434` |
-| `OLLAMA_MODEL` | Modelo de Ollama | `llama2` |
-| `OLLAMA_EMBEDDING_MODEL` | Modelo de embeddings | `nomic-embed-text` |
-
-## API Endpoints
+For complete environment variables reference, see [CLAUDE.md](../CLAUDE.md#environment-variables).
 
 ### GET /
 
@@ -70,6 +46,8 @@ Preguntar sobre Promtior.
 |-------|------|-------------|
 | `q` | string | Pregunta (required, max 500 chars) |
 
+**Rate Limiting:** 30 requests/minute
+
 **Response:**
 ```json
 {
@@ -86,14 +64,35 @@ Preguntar sobre Promtior.
 }
 ```
 
+**Rate Limit Exceeded:**
+```json
+{
+  "error": "Rate limit exceeded",
+  "message": "Too many requests. Please try again later.",
+  "retry_after": "60"
+}
+```
+
 ### POST /admin/reingest
 
 Re-ingestar datos en ChromaDB.
 
-**Query Parameters:**
-| Param | Type | Description |
-|-------|------|-------------|
-| `admin_key` | string | Clave de admin (required) |
+**⚠️ BREAKING CHANGE (v2.1):** Admin key now required via `Authorization` header (no longer accepts query parameter).
+
+**Authentication:** Bearer token via Authorization header
+
+**Headers:**
+| Header | Value | Description |
+|--------|-------|-------------|
+| `Authorization` | `Bearer <admin_key>` | Admin authentication key (required) |
+
+**Rate Limiting:** 3 requests/hour
+
+**Example Request:**
+```bash
+curl -X POST https://your-app.up.railway.app/admin/reingest \
+  -H "Authorization: Bearer your_admin_key_here"
+```
 
 **Response:**
 ```json
@@ -103,65 +102,94 @@ Re-ingestar datos en ChromaDB.
 }
 ```
 
-## LLM Configuration
+**Error Responses:**
 
-### OpenAI (Production)
-
-```python
-# rag.py:251-259
-ChatOpenAI(
-    model="gpt-4o-mini",
-    temperature=0.7,
-)
+Missing Authorization header:
+```json
+{
+  "detail": "Authorization header required. Use: Authorization: Bearer <admin_key>"
+}
 ```
 
-### Ollama (Development)
-
-```python
-# rag.py:260-264
-CustomOllamaChat(
-    model="gpt-oss:20b",
-    temperature=0.7,
-    base_url="http://localhost:11434",
-)
+Invalid admin key:
+```json
+{
+  "detail": "Invalid admin key."
+}
 ```
 
-## Embeddings
-
-### OpenAI
-
-```python
-OpenAIEmbeddings(
-    model="text-embedding-3-small",
-)
-# Dimension: 1536
+Admin key not configured:
+```json
+{
+  "detail": "Admin authentication not configured. Contact system administrator."
+}
 ```
 
-### Ollama
+## Security Features (v2.1)
 
-```python
-CustomOllamaEmbeddings(
-    model="nomic-embed-text",
-    base_url="http://localhost:11434",
-)
-# Dimension: 768
+### CORS Configuration
+
+**Development:**
+- Allowed origins: `http://localhost:3000`, `http://localhost:8000`
+- Credentials: `false`
+
+**Production:**
+- Allowed origins: Configurable via `CORS_ALLOWED_ORIGINS` environment variable (comma-separated)
+- Credentials: `true` (only when specific origins are configured)
+- Methods: `GET`, `POST`, `OPTIONS`
+- Headers: `Content-Type`, `Authorization`, `X-Request-ID`
+
+**Example:**
+```bash
+CORS_ALLOWED_ORIGINS=https://promtior.com,https://www.promtior.com
 ```
 
-## Railway Configuration
+### Rate Limiting
 
-### Variables Requeridas
+Rate limiting is enforced per IP address using in-memory storage.
 
+**Limits:**
+- `GET /ask`: 30 requests/minute
+- `POST /admin/reingest`: 3 requests/hour
+- Default: 100 requests/hour, 20 requests/minute
+
+**Response Headers:**
+- `X-RateLimit-Limit`: Request limit
+- `X-RateLimit-Remaining`: Remaining requests
+- `X-RateLimit-Reset`: Time when limit resets
+- `Retry-After`: Seconds to wait (on 429 errors)
+
+### Security Headers
+
+All responses include OWASP-recommended security headers:
+
+| Header | Value | Purpose |
+|--------|-------|---------|
+| `X-Content-Type-Options` | `nosniff` | Prevent MIME sniffing |
+| `X-Frame-Options` | `DENY` | Prevent clickjacking |
+| `X-XSS-Protection` | `1; mode=block` | Enable XSS filter |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Control referrer info |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Force HTTPS (production only) |
+| `Content-Security-Policy` | Restrictive CSP | Prevent XSS/injection |
+| `Permissions-Policy` | Restrictive permissions | Disable unused features |
+
+### Authentication
+
+**Admin Endpoints:**
+- Authentication: Bearer token via `Authorization` header
+- Format: `Authorization: Bearer <admin_key>`
+- Key stored in: `ADMIN_REINGEST_KEY` environment variable
+- Security: Not visible in logs, browser history, or URL
+
+**Migration from Query Parameters:**
+
+❌ **Old method (deprecated):**
+```bash
+curl -X POST "/admin/reingest?admin_key=secret"
 ```
-ENVIRONMENT=production
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-USE_OPENAI_EMBEDDINGS=true
-```
 
-### Dockerfile
-
-El Dockerfile copia el directorio `docs/` para la carga de PDFs:
-
-```dockerfile
-COPY docs/ ./docs/
+✅ **New method (required):**
+```bash
+curl -X POST "/admin/reingest" \
+  -H "Authorization: Bearer secret"
 ```
