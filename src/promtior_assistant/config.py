@@ -53,6 +53,34 @@ class Settings(BaseSettings):
             )
         return "./data/chroma_db"
 
+    # Security - CORS Configuration
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        """Get CORS allowed origins from environment.
+
+        In production, reads from CORS_ALLOWED_ORIGINS env var (comma-separated).
+        In development, allows localhost origins for testing.
+
+        Returns:
+            list[str]: List of allowed origins
+        """
+        origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "")
+        if self.environment == "production" and origins_str:
+            return [o.strip() for o in origins_str.split(",")]
+        return ["http://localhost:3000", "http://localhost:8000"]
+
+    @property
+    def cors_allow_credentials(self) -> bool:
+        """Only allow credentials when specific origins are set.
+
+        Credentials should only be allowed when we have explicit origins configured.
+        Never allow credentials with wildcard origins (security risk).
+
+        Returns:
+            bool: True if production with specific origins, False otherwise
+        """
+        return self.environment == "production" and bool(os.getenv("CORS_ALLOWED_ORIGINS"))
+
 
 # Global settings instance
 settings = Settings()

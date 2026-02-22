@@ -37,13 +37,14 @@ This runs `uv sync --all-extras` which installs all dependencies from `pyproject
 cp .env.example .env
 ```
 
-Default `.env`:
+For complete environment variables, see [CLAUDE.md](../CLAUDE.md#environment-variables).
 
+Default development `.env`:
 ```bash
 ENVIRONMENT=development
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=phi3:mini
+OLLAMA_MODEL=tinyllama
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 CHROMA_PERSIST_DIRECTORY=./data/chroma_db
 ```
@@ -63,9 +64,9 @@ This will:
 
 | Model | RAM | Quality |
 |-------|-----|---------|
-| phi3:mini | ~3GB | ✅ Recommended |
-| llama2 | ~4GB | Good |
-| tinyllama | ~1GB | Basic |
+| tinyllama | ~1GB | ✅ Recommended |
+| phi3:mini | ~3GB | Good |
+| llama2 | ~4GB | Basic |
 
 ### 5. Ingest Data
 
@@ -89,6 +90,8 @@ make dev
 Server starts at **http://localhost:8000**
 
 ## Available Commands
+
+See [CLAUDE.md](../CLAUDE.md#commands) for complete command list.
 
 | Command | Description |
 |---------|-------------|

@@ -102,7 +102,7 @@ sequenceDiagram
     M->>UC: execute(question)
     Note over UC: InputValidator.validate()
 
-    UC->>V: retrieve_documents(query, k=3)
+    UC->>V: retrieve_documents(query, k=5)
     V-->>UC: Top-3 relevant chunks
 
     UC->>L: generate(prompt)
@@ -225,7 +225,7 @@ class Container:
 flowchart LR
     A["Website<br/>promtior.ai"] --> B["scrape_promtior_website()<br/>ingest.py"]
     A1["docs/*.pdf"] --> C["load_pdfs()<br/>ingest.py"]
-    B --> D["RecursiveCharacterTextSplitter<br/>chunk_size=1000<br/>chunk_overlap=200"]
+    B --> D["RecursiveCharacterTextSplitter<br/>chunk_size=1500<br/>chunk_overlap=300"]
     C --> D
     D --> E["Embeddings<br/>Ollama/OpenAI"]
     E --> F["ChromaDB<br/>persist_directory"]
@@ -236,7 +236,7 @@ flowchart LR
 ```mermaid
 flowchart TD
     Q["User Question"] --> V["Embed Question<br/>nomic-embed-text / text-embedding-3-small"]
-    V --> S["Similarity Search<br/>k=3 chunks"]
+    V --> S["Similarity Search<br/>k=5 chunks"]
     S --> C["Retrieve Context"]
     C --> P["Prompt + Context<br/>use_cases/answer_question.py:44-65"]
     P --> L["Generate Answer<br/>OllamaAsyncAdapter / OpenAIAsyncAdapter"]
@@ -277,21 +277,15 @@ TOTAL                                                                    394    
 
 ## 10. Prompt Template
 
-El sistema utiliza un prompt en español definido en `use_cases/answer_question.py:54-65`:
+The system uses a **multi-language prompt** that automatically detects the question language and responds in the same language (`use_cases/answer_question.py:44-70`):
 
-```
-Eres un asistente que responde preguntas sobre Promtior,
-una empresa de consultoría tecnológica y organizacional especializada
-en inteligencia artificial.
-
-Usa el siguiente contexto para responder la pregunta. Si no sabes la
-respuesta basándote en el contexto, di que no tienes esa información.
-
-Contexto: {context}
-
-Pregunta: {question}
-
-Respuesta:
+```python
+# Detect language and respond in the same language
+LANGUAGE_PROMPTS = {
+    "es": "Eres un asistente que responde preguntas sobre Promtior...",
+    "en": "You are an assistant that answers questions about Promtior...",
+}
+# Response length: 2-3 sentences (conciseness enforced)
 ```
 
 ## 11. Retry Logic
@@ -343,3 +337,104 @@ for attempt in range(max_retries):
 | `openai_async_adapter.py` | Infrastructure | OpenAI LLM adapter |
 | `chroma_adapter.py` | Infrastructure | ChromaDB adapter |
 | `ingest.py` | Infrastructure | Data ingestion (legacy) |
+
+---
+
+## 14. Security Architecture
+
+```mermaid
+flowchart TB
+    subgraph Client["Client Requests"]
+        U["User Browser<br/>Mobile App"]
+        A["Admin Script"]
+    end
+
+    subgraph Security["Security Layer"]
+        CORS["CORS Middleware<br/>allow_origins"]
+        RL["Rate Limiter<br/>10 req/min"]
+        SH["Security Headers<br/>X-Frame-Options<br/>HSTS<br/>CSP"]
+        II["Input Validator<br/>Prompt Injection<br/>Sanitization"]
+    end
+
+    subgraph Auth["Authentication"]
+        AK["Admin Key<br/>X-Header-Key"]
+    end
+
+    subgraph Presentation["Presentation Layer"]
+        API["FastAPI"]
+        EH["Exception<br/>Handlers"]
+    end
+
+    subgraph Validation["Validation Layer"]
+        IQ["InputValidator<br/>domain/services/validators.py"]
+        OQ["OutputValidator"]
+    end
+
+    U --> CORS
+    A --> CORS
+    CORS --> RL
+    RL --> SH
+    SH --> II
+    II --> IQ
+    IQ --> API
+    API --> EH
+    EH --> AK
+
+    CORS -.- SH
+    IQ -.- OQ
+
+    classDef security fill:#2d333b,stroke:#f85149,color:#e6edf3
+    classDef auth fill:#2d333b,stroke:#f59e0b,color:#e6edf3
+    classDef validation fill:#2d333b,stroke:#22c55e,color:#e6edf3
+    class Client,Security,Auth security
+    class Validation validation
+```
+
+### Security Best Practices Implemented
+
+| Feature | Status | Implementation |
+|---------|--------|----------------|
+| Input Validation | ✅ | `domain/services/validators.py` |
+| Output Validation | ✅ | `domain/services/validators.py` |
+| Request ID Tracking | ✅ | `presentation/middleware/request_id.py` |
+| Timeout Protection | ✅ | `presentation/middleware/timeout.py` |
+| Logging Middleware | ✅ | `presentation/middleware/logging.py` |
+| Exception Handlers | ✅ | `presentation/exceptions.py` |
+| CORS | ⚠️ | Requires restriction |
+| Rate Limiting | ❌ | Not implemented |
+| Security Headers | ❌ | Not implemented |
+| Prompt Injection | ❌ | Not implemented |
+
+---
+
+## 15. Deployment Architecture
+
+```mermaid
+flowchart LR
+    subgraph Development["Development"]
+        O["Ollama<br/>localhost:11434"]
+        DB["./data/chroma_db"]
+        D["Dev Server<br/>uvicorn"]
+    end
+
+    subgraph Production["Production (Railway)"]
+        OA["OpenAI API<br/>gpt-4o-mini"]
+        C["ChromaDB<br/>/tmp/chroma_db"]
+        R["Railway<br/>Container"]
+    end
+
+    D --> O
+    D --> DB
+    R --> OA
+    R --> C
+
+    classDef dev fill:#2d333b,stroke:#22c55e,color:#e6edf3
+    classDef prod fill:#2d333b,stroke:#f59e0b,color:#e6edf3
+    class Development dev
+    class Production prod
+```
+
+| Environment | LLM Provider | Embeddings | Storage |
+|-------------|-------------|------------|---------|
+| Development | Ollama (tinyllama) | nomic-embed-text | `./data/chroma_db` |
+| Production | OpenAI (gpt-4o-mini) | text-embedding-3-small | `/tmp/chroma_db` |
