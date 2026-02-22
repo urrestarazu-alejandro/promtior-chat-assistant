@@ -10,7 +10,16 @@ Chatbot RAG (Retrieval Augmented Generation) que responde preguntas sobre Promti
 ## Production Status: ✅ v2.1 (Feb 2026)
 
 - **URL**: https://promtior-chat-assistant-production.up.railway.app
-- **Test**: `curl "https://promtior-chat-assistant-production.up.railway.app/ask?q=When%20was%20Promtior%20founded?"`
+
+## Production Examples
+
+```bash
+# What services does Promtior offer?
+curl --location 'https://promtior-chat-assistant-production.up.railway.app/ask?q=What%20services%20does%20Promtior%20offer%3F'
+
+# When was the company founded?
+curl --location 'https://promtior-chat-assistant-production.up.railway.app/ask?q=When%20was%20the%20company%20founded%3F'
+```
 
 ## Quick Start
 
