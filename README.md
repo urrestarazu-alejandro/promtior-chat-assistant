@@ -82,3 +82,11 @@ graph TD
 - **Semantic chunking** - Mejor calidad de embeddings
 - **Preprocessing** - Limpieza de texto antes de embedding
 - **Clean Architecture** - Domain/Application/Infrastructure/Presentation
+
+## Author
+
+- **Alejandro Urrestarazu** - [LinkedIn](https://www.linkedin.com/in/urrestarazualejandro/)
+
+## License
+
+MIT
